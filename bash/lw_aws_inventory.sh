@@ -2,7 +2,7 @@
 # Script to fetch AWS inventory for Lacework sizing.
 # Requirements: awscli, jq
 
-# You can specify a profile with the -p flag, or get JSON output with the -j flag.
+# You can specify a profile with the -p flag, get text summary with the -t flag, or get JSON output with the -j flag.
 # Note:
 # 1. You can specify multiple accounts by passing a comma seperated list, e.g. "default,qa,test",
 # there are no spaces between accounts in the list
@@ -10,22 +10,27 @@
 
 
 AWS_PROFILE=default
+AWS_MAX_ATTEMPTS=20
+OUTPUT="CSV"
 
 # Usage: ./lw_aws_inventory.sh
-while getopts ":jp:" opt; do
+while getopts ":jp::t" opt; do
   case ${opt} in
     p )
       AWS_PROFILE=$OPTARG
       ;;
     j )
-      JSON="true"
+      OUTPUT="JSON"
+      ;;
+    t )
+      OUTPUT="TXT"
       ;;
     \? )
-      echo "Usage: ./lw_aws_inventory.sh [-p profile] [-j]" 1>&2
+      echo "Usage: ./lw_aws_inventory.sh [-p profile] [-j] [-t]" 1>&2
       exit 1
       ;;
     : )
-      echo "Usage: ./lw_aws_inventory.sh [-p profile] [-j]" 1>&2
+      echo "Usage: ./lw_aws_inventory.sh [-p profile] [-j] [-t]" 1>&2
       exit 1
       ;;
   esac
@@ -96,8 +101,10 @@ function getLambdaFunctions {
 
 function calculateInventory {
   profile=$1
+  accountid=$(aws sts get-caller-identity --query "Account" --output text)
+  accountlastfourdigits=${accountid: -4}
   for r in $(getRegions); do
-    if [ "$JSON" != "true" ]; then
+    if [ "$OUTPUT" == "TXT" ]; then
       echo $r
     fi
     instances=$(getInstances $r $profile)
@@ -119,7 +126,7 @@ function calculateInventory {
     NAT_GATEWAYS=$(($NAT_GATEWAYS + $natgw))
 
     ecsfargateclusters=$(getECSFargateClusters $r $profile)
-    ecsfargateclusterscount=$(echo $ecsfargateclusters | wc -w)
+    ecsfargateclusterscount=$(echo $ecsfargateclusters | wc -w | xargs)
     ECS_FARGATE_CLUSTERS=$(($ECS_FARGATE_CLUSTERS + $ecsfargateclusterscount))
 
     ecsfargaterunningtasks=$(getECSFargateRunningTasks $r $ecsfargateclusters $profile)
@@ -128,6 +135,12 @@ function calculateInventory {
     lambdafns=$(getLambdaFunctions $r $profile)
     LAMBDA_FNS=$(($LAMBDA_FNS + $lambdafns))
     if [ $LAMBDA_FNS -gt 0 ]; then LAMBDA_FNS_EXIST="Yes"; fi 
+
+    regiontotal=$(($instances + $rds + $redshift + $elbv1 + $elbv2 + $natgw))
+
+    if [ "$OUTPUT" == "CSV" ]; then
+      echo "$1", "$accountlastfourdigits", "$r", "$instances", "$rds", "$redshift", "$elbv1", "$elbv2", "$natgw", "$regiontotal", "$ecsfargateclusterscount", "$ecsfargaterunningtasks", "$lambdafns"
+    fi
 done
 
 TOTAL=$(($EC2_INSTANCES + $RDS_INSTANCES + $REDSHIFT_CLUSTERS + $ELB_V1 + $ELB_V2 + $NAT_GATEWAYS))
@@ -171,13 +184,20 @@ function jsonoutput {
   echo "}"
 }
 
+if [ "$OUTPUT" == "CSV" ]; then
+  echo "Profile", "Account last 4 digits", "Region", "EC2 Instances", "RDS Instances", "Redshift Clusters", "v1 Load Balancers", "v2 Load Balancers", "NAT Gateways", "Total Resources", "ECS Fargate Clusters", "ECS Fargate Running Containers/Tasks", "Lambda Functions"
+fi
+
 for PROFILE in $(echo $AWS_PROFILE | sed "s/,/ /g")
 do
     calculateInventory $PROFILE
 done
 
-if [ "$JSON" == "true" ]; then
-  jsonoutput
-else
-  textoutput
-fi
+case ${OUTPUT} in
+  JSON )
+    jsonoutput
+    ;;
+  TXT )
+    textoutput
+    ;;
+esac
