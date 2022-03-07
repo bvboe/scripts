@@ -49,6 +49,10 @@ ECS_FARGATE_RUNNING_TASKS=0
 LAMBDA_FNS=0
 LAMBDA_FNS_EXIST="No"
 
+function getAccountId {
+  aws --profile $profile sts get-caller-identity --query "Account" --output text
+}
+
 function getRegions {
   aws --profile $profile ec2 describe-regions --output json | jq -r '.[] | .[] | .RegionName'
 }
@@ -101,8 +105,7 @@ function getLambdaFunctions {
 
 function calculateInventory {
   profile=$1
-  accountid=$(aws sts get-caller-identity --query "Account" --output text)
-  accountlastfourdigits=${accountid: -4}
+  accountid=$(getAccountId $profile)
   for r in $(getRegions); do
     if [ "$OUTPUT" == "TXT" ]; then
       echo $r
@@ -139,7 +142,7 @@ function calculateInventory {
     regiontotal=$(($instances + $rds + $redshift + $elbv1 + $elbv2 + $natgw))
 
     if [ "$OUTPUT" == "CSV" ]; then
-      echo "$1", "$accountlastfourdigits", "$r", "$instances", "$rds", "$redshift", "$elbv1", "$elbv2", "$natgw", "$regiontotal", "$ecsfargateclusterscount", "$ecsfargaterunningtasks", "$lambdafns"
+      echo "$1", "$accountid", "$r", "$instances", "$rds", "$redshift", "$elbv1", "$elbv2", "$natgw", "$regiontotal", "$ecsfargateclusterscount", "$ecsfargaterunningtasks", "$lambdafns"
     fi
 done
 
@@ -185,7 +188,7 @@ function jsonoutput {
 }
 
 if [ "$OUTPUT" == "CSV" ]; then
-  echo "Profile", "Account last 4 digits", "Region", "EC2 Instances", "RDS Instances", "Redshift Clusters", "v1 Load Balancers", "v2 Load Balancers", "NAT Gateways", "Total Resources", "ECS Fargate Clusters", "ECS Fargate Running Containers/Tasks", "Lambda Functions"
+  echo "Profile", "Account ID", "Region", "EC2 Instances", "RDS Instances", "Redshift Clusters", "v1 Load Balancers", "v2 Load Balancers", "NAT Gateways", "Total Resources", "ECS Fargate Clusters", "ECS Fargate Running Containers/Tasks", "Lambda Functions"
 fi
 
 for PROFILE in $(echo $AWS_PROFILE | sed "s/,/ /g")
