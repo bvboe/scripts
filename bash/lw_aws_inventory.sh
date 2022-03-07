@@ -107,6 +107,8 @@ function calculateInventory {
   profile=$1
   accountid=$(getAccountId $profile)
   for r in $(getRegions); do
+    printf "$profile, $accountid, $r"
+
     if [ "$OUTPUT" == "TXT" ]; then
       echo $r
     fi
@@ -142,7 +144,7 @@ function calculateInventory {
     regiontotal=$(($instances + $rds + $redshift + $elbv1 + $elbv2 + $natgw))
 
     if [ "$OUTPUT" == "CSV" ]; then
-      echo "$1", "$accountid", "$r", "$instances", "$rds", "$redshift", "$elbv1", "$elbv2", "$natgw", "$regiontotal", "$ecsfargateclusterscount", "$ecsfargaterunningtasks", "$lambdafns"
+      echo , "$instances", "$rds", "$redshift", "$elbv1", "$elbv2", "$natgw", "$regiontotal", "$ecsfargateclusterscount", "$ecsfargaterunningtasks", "$lambdafns"
     fi
 done
 
